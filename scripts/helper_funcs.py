@@ -44,10 +44,10 @@ class helper_funcs(object):
         TP53 mutation status.
         '''
         # read in file
-        data_file = "../data/MAFs/TP53_mut_ccf.csv"
+        data_file = "../data/TP53_mut_ccf.csv"
         df = pd.read_csv(data_file, sep=",")
         # add HGVSp
-        data_file = "../data/MAFs/HGVSc_to_HGVSp_mapping.tsv"
+        data_file = "../data/HGVSc_to_HGVSp_mapping.tsv"
         mapping_df = pd.read_csv(data_file, sep="\t")
         mapping_dict = dict(zip(mapping_df["HGVSc"], mapping_df["HGVSp_Short"]))
         df["HGVSp_Short"] = df["HGVSc"].map(mapping_dict)
@@ -97,7 +97,7 @@ class helper_funcs(object):
         Organized model data.
         '''
         # read in data
-        RIPseq_data = pd.read_csv("../results/RIPseq-TE_fraction_ORF1p.tsv", sep="\t")
+        RIPseq_data = pd.read_csv("../data/RIPseq-TE_fraction_ORF1p.tsv", sep="\t")
         ADAR1_data = self.ADAR1_editing()
         fpkmSINE_data = self.fpkm_SINE_dsRNAforce()
         IFN_data = self.IFN_data()
@@ -108,7 +108,7 @@ class helper_funcs(object):
         locus_data = pd.merge(RIPseq_data, ADAR1_data, left_on="TE_ID", right_on="rep.id").drop(["rep.id"], axis=1)
         #fpkmSINE_cols = ["rep.id"] + list(fpkmSINE_data.columns[10:])
         locus_data = pd.merge(locus_data, fpkmSINE_data, left_on="TE_ID", right_on="rep.id", suffixes=["_ADAR1_Edit", "_Expression"])
-        locus_data = locus_data[locus_data["TE_ID"].str.contains("Alu")]
+        #locus_data = locus_data[locus_data["TE_ID"].str.contains("Alu")]
 
         # organize data
         df = pd.merge(sample_data, mutation_data, on=["Sample_ID","Patient_ID"], how='left')
@@ -117,6 +117,7 @@ class helper_funcs(object):
         df.loc[df["TP53_call"] == "WT", "HGVSc"] = "WT"
         df.loc[df["HGVSc"] == "WT", "HGVSp_Short"] = "WT"
         df.loc[df["HGVSc"] == "WT", "ccf_Mcopies"] = 0
+        df.loc[df["HGVSc"] == "WT", "VAF"] = 0
         df.loc[df["HGVSc"] == "WT", "Prob MT p53"] = 0
         df = df[~df["data"].isna()&~df["Gene"].isna()] 
         #df = df[~df["data"].isna()&~df["ORF1p Term"].isna()]
@@ -141,7 +142,7 @@ class helper_funcs(object):
         df["ADAR1 Term"] = (1 - df["ccf_Mcopies"]) * df["ADAR1 Term"]
         df["ORF1p Term"] = df["ccf_Mcopies"] * df["ORF1p Term"]
 
-        df["IFN Term"] = [IFN_data[IFN_data["Sample_ID"] == s]["ifn_geoMean"].sum() for s in samples]
+        df["IFN Term"] = [IFN_data[IFN_data["Sample_ID"] == s]["ifn_median"].sum() for s in samples]
 
         #df = df[df["VAF"] != 0]
 

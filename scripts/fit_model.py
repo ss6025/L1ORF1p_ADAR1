@@ -16,11 +16,7 @@ df = helper_funcs.organized_model_data()
 df.to_csv("../results/immunity_model.tsv", sep="\t", index=False)
 print(df)
 
-# keep data with mutation call data
-data_file = "../results/immunity_model.tsv"
-df = pd.read_csv(data_file, sep="\t")
-
-#df = df[~df["data"].isna()&~df["ORF1p Term"].isna()]
+#df = df[df["TP53_call"] != "WT"]
 #print(df)
 #df = df[~df["TP53_call"].isna()]
 
@@ -92,7 +88,7 @@ df_test_results.columns = ["Training Data Fraction", "Training Data Iteration", 
 
 # plot example
 
-training_fraction = 0.2
+training_fraction = 0.8
 
 sub_df_train_results = df_train_results[(df_train_results["Training Data Fraction"] == training_fraction) & 
                                         (df_train_results["Training Data Iteration"] == 2)]
