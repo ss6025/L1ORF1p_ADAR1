@@ -1,121 +1,128 @@
 #!/usr/bin/env python
 
-# This script fits the model.
+# This script contains helper functions.
 
 # import packages
-import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 import numpy as np
-from scipy.stats import pearsonr,spearmanr
-import helper_funcs
-helper_funcs = helper_funcs.helper_funcs()
 
-# read in data
-df = helper_funcs.organized_model_data()
-df.to_csv("../results/immunity_model.tsv", sep="\t", index=False)
-print(df)
+# class
+class helper_funcs(object):
+    '''
+    Helper functions.
+    '''
 
-#df = df[df["TP53_call"] != "WT"]
-#print(df)
-#df = df[~df["TP53_call"].isna()]
+    def __init__(self):
+        '''
+        Constructor.
+        '''
+        return
 
-# fit model
-data_fracs = np.linspace(0.1, 0.9, num=9)
-data_iters = np.arange(1, 4)
-df_train_concat = []
-df_test_concat = []
-df_train_results = []
-df_test_results = []
-for data_frac in data_fracs:
-    
-    print("Data Fraction:", data_frac)
+    def sample_data(self):
+        '''
+        Samples with both DNA and RNA information and TP53 status.
+        '''
+        data_file = "../data/DNA_RNA_sample.csv"
+        df = pd.read_csv(data_file, sep=",")
+        return df
 
-    #df_train = df.sample(frac=0.20, replace=False, random_state=42)
-    #df_test = df.drop(df_train.index)
+    def p53_fitness(self):
+        '''
+        p53 fitness.
+        '''
+        data_file = "../data/PDAC_autopsy_p53_fitness.tsv"
+        df = pd.read_csv(data_file, sep="\t")
+        df["Fitness"] = df["Fitness"] / df["Fitness"].max()
+        df.rename(columns={"Mutation" : "HGVSp_Short"}, inplace=True)
+        df["HGVSp_Short"] = df["HGVSp_Short"].replace("^p.", "", regex=True)
+        return df
 
-    for data_iter in data_iters:
+    def TP53_mut_df(self):
+        '''
+        TP53 mutation status.
+        '''
+        # read in file
+        data_file = "../data/TP53_mut_ccf_L1_no_0.csv" # TP53_mut_ccf_L1_no_0.csv
+        df = pd.read_csv(data_file, sep=",")
+        ## rename columns
+        df = df[["Sample_ID", "Gene", "HGVSc", "HGVSp_Short","Insertion_z", 
+                 "Prob MT p53", "VAF", "ccf_Mcopies","Insertion."]]
+        return df
 
-        print("Data Iteration:", data_iter)
+    def fpkm_SINE_dsRNAforce(self):
+        '''
+        Data on SINE and dsRNA force.
+        '''
+        data_file = "../data/fpkm_SINE_filtered.csv"
+        df = pd.read_csv(data_file, sep=",")
+        #df.columns = df.columns.str.replace("T0", "T")
+        return df
 
-        df_train = df.sample(frac=data_frac, replace=False, random_state=42)
-        df_test = df.drop(df_train.index)
+    def IFN_data(self):
+        '''
+        IFN data.
+        '''
+        data_file = "../data/immune_P53_adar1.csv"
+        df = pd.read_csv(data_file, sep=",")
+        return df
 
-        df_train["Training Data Fraction"] = data_frac
-        df_train["Training Data Iteration"] = data_iter
+    def ADAR1_editing(self):
+        '''
+        Locus-specific ADAR1 editing.
+        '''
+        data_file = "../data/sine_locus_editing_filtered.csv" #sine_locus_editing_filtered.csv
+        df = pd.read_csv(data_file, sep=",")
+        return df
 
-        df_test["Training Data Fraction"] = data_frac
-        df_test["Training Data Iteration"] = data_iter
+    def organized_model_data(self):
+        '''
+        Organized model data.
+        '''
+        # read in data
+        RIPseq_data = pd.read_csv("../data/RIPseq-TE_fraction_ORF1p.tsv", sep="\t")
+        ADAR1_data = self.ADAR1_editing()
+        fpkmSINE_data = self.fpkm_SINE_dsRNAforce()
+        IFN_data = self.IFN_data()
+        mutation_data = self.TP53_mut_df()
+        sample_data = self.sample_data()
 
-        # gather weight correlations
-        weights = np.linspace(0, 1)
-        for i,w in enumerate(weights):
-            df_train["Total Term"] = w * df_train["ADAR1 Term"] + (1 - w) * df_train["ORF1p Term"]
-            df_train["ADAR1 Weight"] = w
-            df_train["ORF1p Weight"] = 1 - w
+        # prep locus-level data
+        locus_data = pd.merge(RIPseq_data, ADAR1_data, left_on="TE_ID", right_on="rep.id").drop(["rep.id"], axis=1)
+        locus_data = pd.merge(locus_data, fpkmSINE_data, left_on="TE_ID", right_on="rep.id", suffixes=["_ADAR1_Edit", "_Expression"])
 
-            df_test["Total Term"] = w * df_test["ADAR1 Term"] + (1 - w) * df_test["ORF1p Term"]
-            df_test["ADAR1 Weight"] = w
-            df_test["ORF1p Weight"] = 1 - w
+        # organize data
+        df = pd.merge(sample_data, mutation_data, on=["Sample_ID"], how='right')
+        #df["HGVSc"] = df["HGVSc"].fillna("WT")
+        df.loc[df["TP53_call"] == "WT", "Gene"] = "TP53"
+        df.loc[df["TP53_call"] == "WT", "HGVSc"] = "WT"
+        df.loc[df["HGVSc"] == "WT", "HGVSp_Short"] = "WT"
+        df.loc[df["HGVSc"] == "WT", "ccf_Mcopies"] = 0
+        df.loc[df["HGVSc"] == "WT", "VAF"] = 0
+        df.loc[df["HGVSc"] == "WT", "Prob MT p53"] = 0
+        df = df[~df["data"].isna()&~df["Gene"].isna()] 
+        samples = df["Sample_ID"].to_list()
+        ## function to get data - if column missing return NaN
+        #def get_column(dataframe, column):
+        #    return dataframe.get(column, pd.Series(index=dataframe.index, 
+        #                                           name=column))
 
-            df_train_concat.append(df_train.copy())
-            df_test_concat.append(df_test.copy())
+        df["ADAR1 Term"] = [( (1 - locus_data[f"{s}_ADAR1_Edit"]) * locus_data[f"{s}_Expression"] ).sum() for s in samples]
+        df["ORF1p Term"] = [(locus_data[f"{s}_Expression"] ).sum() for s in samples]
+        # add to filter out NA values
 
-            linear_train_r, linear_train_pvalue = pearsonr(df_train["Total Term"], df_train["IFN Term"])
-            rank_train_r, rank_train_pvalue = spearmanr(df_train["Total Term"], df_train["IFN Term"])
+####### This is the step where NA values are added 
 
-            linear_test_r, linear_test_pvalue = pearsonr(df_test["Total Term"], df_test["IFN Term"])
-            rank_test_r, rank_test_pvalue = spearmanr(df_test["Total Term"], df_test["IFN Term"])
+        df["ADAR1 Term"] = (1 - df["Prob MT p53"]) * df["ADAR1 Term"]
+        df["ORF1p Term"] = df["Prob MT p53"] * df["Insertion_z"]*df["ORF1p Term"]
 
-            df_train_results.append([data_frac, data_iter, w, 1 - w, 
-                                     linear_train_r, linear_train_pvalue, 
-                                     rank_train_r, rank_train_pvalue])
-            df_test_results.append([data_frac, data_iter, w, 1 - w, 
-                                    linear_test_r, linear_test_pvalue, 
-                                    rank_test_r, rank_test_pvalue])
+        df["ADAR1 Term"] = (1 - df["ccf_Mcopies"]) * df["ADAR1 Term"]
+        df["ORF1p Term"] = df["ccf_Mcopies"] * df["ORF1p Term"]
 
-df_train_concat = pd.concat(df_train_concat, axis=0)
-df_test_concat = pd.concat(df_test_concat, axis=0)
+        df["IFN Term"] = [IFN_data[IFN_data["Sample_ID"] == s]["ifn_median"].sum() for s in samples]
 
-df_train_results = pd.DataFrame(df_train_results)
-df_train_results.columns = ["Training Data Fraction", "Training Data Iteration", "ADAR1 Weight", "ORF1p Weight", 
-                           "Linear Correlation", "Linear p-value", "Rank Correlation", "Rank p-value"]
-df_test_results = pd.DataFrame(df_test_results)
-df_test_results.columns = ["Training Data Fraction", "Training Data Iteration", "ADAR1 Weight", "ORF1p Weight", 
-                          "Linear Correlation", "Linear p-value", "Rank Correlation", "Rank p-value"]
 
-#################
-
-# plot example
-
-training_fraction = 0.8
-
-sub_df_train_results = df_train_results[(df_train_results["Training Data Fraction"] == training_fraction) & 
-                                        (df_train_results["Training Data Iteration"] == 2)]
-sub_df_test_results = df_test_results[(df_test_results["Training Data Fraction"] == training_fraction) & 
-                                      (df_test_results["Training Data Iteration"] == 2)]
-
-opt_ADAR1_weight = sub_df_train_results[sub_df_train_results["Rank Correlation"] == sub_df_train_results["Rank Correlation"].max()]["ADAR1 Weight"].to_numpy()[0]
-
-sub_df_train_concat = df_train_concat[(df_train_concat["Training Data Fraction"] == training_fraction) &
-                                      (df_train_concat["Training Data Iteration"] == 2) & 
-                                      (df_train_concat["ADAR1 Weight"] == opt_ADAR1_weight)]
-sub_df_test_concat = df_test_concat[(df_test_concat["Training Data Fraction"] == training_fraction) &
-                                    (df_test_concat["Training Data Iteration"] == 2) & 
-                                    (df_test_concat["ADAR1 Weight"] == opt_ADAR1_weight)]
-
-fig, ax = plt.subplots()
-sns.lineplot(data=sub_df_train_results, x="ADAR1 Weight", y="Rank Correlation")
-plt.savefig("../results/ADAR1-weight_vs_Rank_corr.png", bbox_inches="tight")
-
-fig, ax = plt.subplots()
-sns.regplot(data=sub_df_train_concat, x="Total Term", y="IFN Term")
-plt.savefig("../results/Predicted_vs_Observed_IFN-training.png", bbox_inches="tight")
-print("Training Results:", sub_df_train_results[sub_df_train_results["ADAR1 Weight"] == opt_ADAR1_weight])
-
-fig, ax = plt.subplots()
-sns.regplot(data=sub_df_test_concat, x="Total Term", y="IFN Term")
-plt.savefig("../results/Predicted_vs_Observed_IFN-testing.png", bbox_inches="tight")
-print("Testing Results:", sub_df_test_results[sub_df_test_results["ADAR1 Weight"] == opt_ADAR1_weight])
-
-plt.show()
+        df = df[~df["data"].isna()&~df["ORF1p Term"].isna()]
+        df[["ADAR1 Term (z-score)", "ORF1p Term (z-score)", "IFN Term (z-score)"]] = StandardScaler().fit_transform(df[["ADAR1 Term", "ORF1p Term", "IFN Term"]])
+        
+        return df
