@@ -9,7 +9,8 @@ To run the code, you need to clone this repository and then simply execute the f
 
 ```bash
 # Activate the conda environment
-conda activate Immunity_env
+conda activate Immunity_env![GraphicalAbstract](https://github.com/user-attachments/assets/bf122e72-f8f7-480f-afb7-a90f9500f9bd)
+
 
 # Run the Python script
 python fit_model.py
